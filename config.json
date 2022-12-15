@@ -1,0 +1,9 @@
+{
+    "clientId": "",
+    "clientSecret": "",
+    "accessToken": "",
+    "whereToDownload": "/path/to/folder",
+    "startPage": "",
+    "endPage": "",
+    "lastAllowedDate": "2018-12-26"
+}

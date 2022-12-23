@@ -7,7 +7,9 @@ let {
     endPage,
     lastAllowedDate,
     whereToDownload,
+    startVideo,
 } = require("./config.json");
+let path = require("path");
 const fs = require("fs");
 const fetch = require("node-fetch");
 const failedVideos = {};
@@ -22,6 +24,7 @@ let pageFetchedLast = 0;
 const validateConfig = () => {
     startPage = startPage || 1;
     endPage = endPage || Infinity;
+    startVideo = startVideo ? startVideo - 1 : 0;
     lastAllowedDate = new Date(lastAllowedDate) || Date.now();
     whereToDownload = whereToDownload || __dirname;
     if (clientId && clientSecret && accessToken) return;
@@ -37,22 +40,20 @@ const validateConfig = () => {
  * @param {string} videoId The id of the video.
  * @returns true if successfull, false otherwise.
  */
-const downloadVideo = async (name, url, videoId, size) => {
-    let path = whereToDownload + "/" + name;
-    console.log(`Will start downloading file: ${videoId} which has a size of ${size} in ${path}`);
+const downloadVideo = async (url, videoId, downloadPath) => {
     const response = await fetch(url);
     return await new Promise((resolve) => {
         try {
             const readStream = response.body;
-            const writeStream = fs.createWriteStream(path);
+            const writeStream = fs.createWriteStream(downloadPath);
             readStream.pipe(writeStream);
             readStream.on("end", () => {
-                console.log(`Done downloading file ${videoId} in ${path}`);
+                console.log(`Done downloading file ${videoId} in ${downloadPath}`);
                 numSuccess++;
                 resolve(true);
             });
             readStream.on("error", (err) => {
-                console.error(`\n\nError while downloading file: ${path}, error is: ${err}\n\n`);
+                console.error(`\n\nError while downloading file: ${downloadPath}, error is: ${err}\n\n`);
                 writeStream.close();
                 numFailed++;
                 failedVideos[videoId] = { err, url };
@@ -60,7 +61,7 @@ const downloadVideo = async (name, url, videoId, size) => {
                 resolve(false);
             });
         } catch (e) {
-            console.error(`\n\nError while downloading file: ${path}, error is: ${e}\n\n`);
+            console.error(`\n\nError while downloading file: ${downloadPath}, error is: ${e}\n\n`);
             failedVideos[videoId] = e;
             numFailed++;
             return resolve(false);
@@ -76,8 +77,11 @@ const downloadVideo = async (name, url, videoId, size) => {
  */
 const getPageVideos = async (client, currentPage) => {
     let videosUrl = `https://api.vimeo.com/me/videos?direction=asc&sort=date&page=${currentPage}&per_page=100`;
+    const isStartPage = startPage == currentPage;
     console.log(
-        `\n\n==========================================\nWill begin fetching videos from page ${currentPage} using url ${videosUrl}\n==========================================\n\n`
+        `\n\n==========================================\nWill begin fetching videos from page ${currentPage} using url ${videosUrl} ${
+            isStartPage && `starting from video ${startVideo + 1}`
+        }\n==========================================\n\n`
     );
     return new Promise((resolve, reject) => {
         client.request(videosUrl, async (err, res) => {
@@ -87,7 +91,8 @@ const getPageVideos = async (client, currentPage) => {
             }
             let nextPage = res.paging.next;
             let { data } = res;
-            for (let video of data) {
+            for (let i = isStartPage ? startVideo : 0; i < data.length; i++) {
+                const video = data[i];
                 let { name, release_time: time, uri: videoId, download } = video;
                 if (new Date(time) > lastAllowedDate) {
                     console.log(
@@ -102,9 +107,27 @@ const getPageVideos = async (client, currentPage) => {
                 let highestQuality = download.sort((a, b) => b.size - a.size)[0];
                 let { type, rendition, link, size_short } = highestQuality;
                 let extension = type.split("/")[1];
-                let fileName = `${name}.${extension}`;
+                let fileName = `${name.replace(/\//g, "-")}.${extension}`;
                 console.log("\n");
-                await downloadVideo(fileName, link, videoId, size_short);
+                let downloadPath = path.join(whereToDownload, fileName);
+                console.log(
+                    `Will start downloading video: number: ${i + 1}/${
+                        data.length
+                    }, page: ${currentPage}, videoId: ${videoId}, size: ${size_short}, path: ${downloadPath}`
+                );
+                let isDownloadSuccessful = await downloadVideo(link, videoId, downloadPath);
+                if (isDownloadSuccessful) {
+                    let downloadData = {
+                        VideoId: videoId,
+                        Name: fileName,
+                        Quality: rendition,
+                        PageNumber: currentPage,
+                        VideoNumber: i + 1,
+                        DownloadDate: new Date().toUTCString(),
+                    };
+
+                    fs.appendFileSync("./installedVideos.txt", JSON.stringify(downloadData) + ",\n");
+                }
             }
 
             return resolve(nextPage);

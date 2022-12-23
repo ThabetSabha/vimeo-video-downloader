@@ -2,8 +2,9 @@
     "clientId": "",
     "clientSecret": "",
     "accessToken": "",
-    "whereToDownload": "/path/to/folder",
-    "startPage": "",
-    "endPage": "",
-    "lastAllowedDate": "2018-12-26"
+    "whereToDownload": "/path/to/file",
+    "startPage": "2",
+    "startVideo": "13",
+    "endPage": "214",
+    "lastAllowedDate": "2019-06-26"
 }
